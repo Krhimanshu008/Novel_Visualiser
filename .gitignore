@@ -1,0 +1,58 @@
+# Environment & Sensitive Keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Databases & SQLite files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Rendered Media Outputs & Renders
+output/
+novel_visualiser/output/
+*.mp4
+*.mkv
+*.avi
+*.wav
+*.mp3
+*.flac
+
+# Large Novel Files & Model Weights
+*.epub
+models/
+*.safetensors
+*.pth
+*.ckpt
+*.bin
+
+# Testing & Logs
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+desktop.ini

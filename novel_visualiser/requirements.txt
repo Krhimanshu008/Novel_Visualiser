@@ -1,0 +1,46 @@
+# === Phase 0: Foundation ===
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+langgraph>=0.2.0
+langchain-core>=0.3.0
+langchain-google-genai>=2.0.0
+fastapi>=0.115.0
+uvicorn>=0.30.0
+python-dotenv>=1.0.0
+
+# === Phase 1: Research Engine ===
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+httpx>=0.27.0
+# crawl4ai>=0.3.0  # Optional: advanced web scraping
+
+# === Phase 2: Story Intelligence ===
+flashtext>=2.7
+rapidfuzz>=3.5.0
+spacy>=3.7.0
+ebooklib>=0.18
+# python-docx>=1.0.0  # If ingesting .docx novels
+# PyMuPDF>=1.23.0     # If ingesting PDF novels
+
+# === Phase 3: Visual Identity ===
+# insightface>=0.7.3   # Face embedding extraction
+# onnxruntime>=1.17.0  # InsightFace backend
+# opencv-python>=4.9.0 # Image analysis & QC Gate 1
+# clip-interrogator>=0.6.0  # Style vector extraction
+
+# === Phase 4: Scene Production ===
+jinja2>=3.1.0
+# ultralytics>=8.1.0   # YOLOv8 for subject detection
+# mediapipe>=0.10.0    # Pose/hand detection
+
+# === Phase 5: Audio & Film ===
+# whisperx>=3.1.0      # Forced alignment
+# pydub>=0.25.0        # Audio manipulation
+# moviepy>=1.0.0       # Video composition helper
+
+# === Utilities ===
+loguru>=0.7.0
+rich>=13.7.0
+

@@ -1,0 +1,41 @@
+nv-comfyui-model-library/  (14.08 GB Total)
+│
+├── checkpoints/
+│   └── sdxl/
+│       ├── illustrious/
+│       │   └── ✅ waiNSFWIllustrious_v110.safetensors               (6,616.6 MB)  <-- Main Novel Checkpoint
+│       ├── 📁 pony/                                                               <-- Ready for Pony checkpoints
+│       └── 📁 other/                                                              <-- Ready for general SDXL checkpoints
+│
+├── vae/
+│   └── ✅ sdxl_vae_fp16_fix.safetensors                             (319.1 MB)    <-- Prevents black images on T4 GPU
+│
+├── ipadapter/
+│   └── sdxl/
+│       ├── plus/
+│       │   ├── ✅ ip-adapter-plus_sdxl_vit-h.safetensors            (808.3 MB)    <-- Full Character & Style transfer
+│       │   └── ✅ ip-adapter-plus-face_sdxl_vit-h.safetensors       (808.3 MB)    <-- Character Face transfer
+│       └── 📁 faceid/                                                             <-- Ready for FaceID models
+│
+├── clip_vision/
+│   └── ✅ CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors               (2,411.2 MB)  <-- Vision encoder required by IP-Adapter
+│
+├── controlnet/
+│   └── sdxl/
+│       └── ✅ xinsir-controlnet-union-sdxl-1.0-promax.safetensors   (2,396.9 MB)  <-- All-in-One: Pose, Depth, Canny, Lineart, Tile
+│
+├── upscale_models/
+│   ├── anime/
+│   │   └── ✅ 4x-AnimeSharp.pth                                     (63.9 MB)     <-- Sharp 4x anime/illustration upscaler
+│   └── 📁 general/                                                                <-- Ready for RealESRGAN / general upscalers
+│
+├── loras/
+│   └── sdxl/
+│       ├── 📁 characters/                                                         <-- Drop Character LoRAs here later
+│       ├── 📁 styles/                                                             <-- Drop Art Style LoRAs here later
+│       └── 📁 effects/                                                            <-- Drop Lighting / Effect LoRAs here later
+│
+├── 📁 embeddings/                                                                 <-- Ready for Negative / Positive Textual Inversions
+│
+└── registry/
+    └── 📄 catalog.json                                                            <-- Inventory of all models & sizes
