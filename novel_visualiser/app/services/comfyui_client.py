@@ -1043,8 +1043,58 @@ class DualGPUComfyUIDispatcher:
         self.clients = [ComfyUIClient(base_url=u) for u in urls]
         logger.info("Initialized DualGPUComfyUIDispatcher with %d workers: %s", len(self.clients), urls)
 
+    def get_online_clients(self) -> list[ComfyUIClient]:
+        """Return list of clients that are currently online and responding."""
+        online = []
+        for client in self.clients:
+            try:
+                stats = client.check_health()
+                if stats.get("status") == "online":
+                    online.append(client)
+            except Exception as e:
+                logger.debug("Worker %s offline check: %s", client.base_url, e)
+        return online if online else self.clients
+
     def check_health_all(self) -> list[dict[str, Any]]:
         return [c.check_health() for c in self.clients]
+
+    def dispatch_batch_parallel(
+        self,
+        jobs: list[tuple[str, dict[str, Any]]],
+        output_dir: Optional[Path] = None,
+    ) -> list[tuple[str, Optional[Path]]]:
+        """Executes a batch of (job_id, workflow) across online dual-GPU workers in parallel."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        if not jobs:
+            return []
+
+        active_clients = self.get_online_clients()
+        num_workers = len(active_clients)
+        logger.info("Dispatching %d jobs across %d online GPU workers...", len(jobs), num_workers)
+        results: list[tuple[str, Optional[Path]]] = [None] * len(jobs)
+
+        def _execute_job(index: int, job_id: str, workflow: dict[str, Any], client: ComfyUIClient):
+            try:
+                logger.info("Worker [%s] picked up job: %s", client.base_url, job_id)
+                downloaded = client.generate_image_sync(workflow, output_dir=output_dir)
+                img_path = downloaded[0] if downloaded else None
+                return index, job_id, img_path
+            except Exception as e:
+                logger.error("Job %s failed on worker %s: %s", job_id, client.base_url, e)
+                return index, job_id, None
+
+        with ThreadPoolExecutor(max_workers=max(1, num_workers)) as executor:
+            futures = []
+            for i, (job_id, workflow) in enumerate(jobs):
+                worker_client = active_clients[i % num_workers]
+                futures.append(executor.submit(_execute_job, i, job_id, workflow, worker_client))
+
+            for future in as_completed(futures):
+                idx, jid, img = future.result()
+                results[idx] = (jid, img)
+
+        return results
 
     def generate_batch_parallel(
         self,
@@ -1052,11 +1102,8 @@ class DualGPUComfyUIDispatcher:
         output_dir: Optional[Path] = None,
     ) -> dict[str, list[Path]]:
         """Executes a batch of generation jobs across the dual GPU workers in parallel."""
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        results: dict[str, list[Path]] = {}
-        if not jobs:
-            return results
+        dispatched = self.dispatch_batch_parallel(jobs, output_dir=output_dir)
+        return {jid: [p] if p else [] for jid, p in dispatched}
 
 
 def get_dual_gpu_dispatcher() -> DualGPUComfyUIDispatcher:

@@ -379,6 +379,7 @@ Respond ONLY in valid JSON matching this exact structure:
         self,
         matrix_spec: LocationPlateMatrixSpec,
         output_dir: Path,
+        checkpoint: Optional[str] = None,
     ) -> LocationPlateMatrixSpec:
         """Render all 4 plates across the ComfyUI cluster and extract structural guides."""
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -402,6 +403,7 @@ Respond ONLY in valid JSON matching this exact structure:
                     width=plate.width,
                     height=plate.height,
                     seed=plate.seed or random.randint(1000, 9999),
+                    checkpoint=checkpoint,
                 )
                 jobs.append((job_id, workflow))
 
