@@ -31,6 +31,7 @@ ENV/
 # Rendered Media Outputs & Renders
 output/
 novel_visualiser/output/
+kaggle_ai_engine/outputs/
 *.mp4
 *.mkv
 *.avi
@@ -56,3 +57,4 @@ htmlcov/
 .DS_Store
 Thumbs.db
 desktop.ini
+

@@ -51,18 +51,46 @@ class ComfyUISettings(BaseSettings):
         default=None,
         description="Full URL if using Kaggle/Colab tunnel (e.g. https://xxxx.trycloudflare.com or https://xxxx.ngrok-free.app)",
     )
+    gpu0_url: Optional[str] = Field(
+        default=None,
+        description="Permanent URL for GPU 0 worker (e.g. https://gpu0.krhimanshu.in)",
+    )
+    gpu1_url: Optional[str] = Field(
+        default=None,
+        description="Permanent URL for GPU 1 worker (e.g. https://gpu1.krhimanshu.in)",
+    )
     host: str = Field(default="127.0.0.1")
     port: int = Field(default=8188)
     use_ssl: bool = Field(default=False)
     client_id: str = Field(default="novel_visualiser")
     timeout_seconds: int = Field(default=600)
+    allow_mock_fallback: bool = Field(
+        default=False,
+        description="If True, permits local mock canvas generation when ComfyUI is offline (test mode only).",
+    )
 
     @property
     def base_url(self) -> str:
+        if self.gpu0_url:
+            return self.gpu0_url.rstrip("/")
         if self.url:
             return self.url.rstrip("/")
         scheme = "https" if self.use_ssl else "http"
         return f"{scheme}://{self.host}:{self.port}"
+
+    @property
+    def cluster_urls(self) -> list[str]:
+        """Return list of active cluster URLs for Dual-GPU dispatching."""
+        urls: list[str] = []
+        if self.gpu0_url:
+            urls.append(self.gpu0_url.rstrip("/"))
+        elif self.url:
+            urls.append(self.url.rstrip("/"))
+        if self.gpu1_url:
+            urls.append(self.gpu1_url.rstrip("/"))
+        if not urls:
+            urls.append(self.base_url)
+        return urls
 
     @property
     def ws_url(self) -> str:

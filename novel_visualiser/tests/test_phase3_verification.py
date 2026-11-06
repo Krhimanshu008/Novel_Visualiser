@@ -13,6 +13,7 @@ Verifies:
 import os
 import sys
 from pathlib import Path
+import pytest
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -28,6 +29,35 @@ from app.services.comfyui_client import ComfyUIClient, ComfyUIWorkflowCompiler
 from app.orchestrator.resolver import resolve_asset_for_scene
 
 
+@pytest.fixture
+def proj_id():
+    db_path = "test_phase3.db"
+    init_db(db_path)
+    with get_session() as session:
+        proj = Project(
+            name="Shadow Slave Visual Lock Test",
+            novel_title="Shadow Slave",
+            author="Guiltythree",
+        )
+        session.add(proj)
+        session.commit()
+        return proj.id
+
+
+@pytest.fixture
+def sunny_id(proj_id):
+    with get_session() as session:
+        sunny = Entity(
+            project_id=proj_id,
+            canonical_name="Sunny",
+            entity_type="character",
+            first_appearance_chapter=1,
+        )
+        session.add(sunny)
+        session.commit()
+        return sunny.id
+
+
 def test_01_user_workflow_files():
     print("\n--- Test 1: User-Tested ComfyUI Workflow Files ---")
     workflows_dir = Path(__file__).resolve().parent.parent / "templates" / "comfyui" / "Workflows"
@@ -36,59 +66,62 @@ def test_01_user_workflow_files():
     assert workflows_dir.exists(), "Workflows directory not found"
 
     expected_files = [
-        "01_WAI_Fantasy_Location_Generator.json",
-        "02_WAI_Character_Design_Generator.json",
-        "03_WAI_Artifact_Prop_Generator.json",
-        "04_WAI_IPAdapter_Character_Consistency.json",
-        "05_FLUX2_Klein_4B_Two_Reference_Edit.json",
-        "06_Qwen_2511_GGUF_Three_Reference_Composition.json",
-        "07_Florence2_Detailed_Asset_Caption.json",
-        "08_Florence2_Asset_Tags_and_Regions.json",
+        "WF-FOUNDRY-CHAR.json",
+        "WF-FOUNDRY-LOC.json",
+        "WF-FOUNDRY-PROP.json",
+        "WF-SHOT-SOLO.json",
+        "WF-SHOT-MULTI.json",
+        "WF-SHOT-ENV.json",
+        "WF-EDIT-INPAINT.json",
+        "WF-MASTER-UPSCALE.json",
     ]
 
     for fname in expected_files:
         fpath = workflows_dir / fname
         assert fpath.exists(), f"Workflow file missing: {fname}"
         raw = ComfyUIWorkflowCompiler.load_workflow_template(fname)
-        nodes = raw.get("nodes", [])
-        print(f" [PASS] Loaded '{fname}': {len(nodes)} nodes configured")
+        assert isinstance(raw, dict) and len(raw) > 0
+        print(f" [PASS] Loaded '{fname}': {len(raw)} nodes configured")
 
 
 def test_02_workflow_compilation():
     print("\n--- Test 2: Workflow Parameterization & Compilers ---")
 
-    # 1. Compile WF-001 Character Design Turnaround
-    prompt_char = ComfyUIWorkflowCompiler.compile_character_design(
-        positive_prompt="Sunny, slender 16-year-old youth with messy jet-black hair and dark eyes",
+    # 1. Compile WF-FOUNDRY-CHAR Character Design Turnaround
+    prompt_char = ComfyUIWorkflowCompiler.compile_foundry_char(
+        char_id="sunny",
+        identity_tags="slender 16-year-old youth with messy jet-black hair and dark eyes",
         seed=123456,
         checkpoint="Wai_Illustrious_v16.safetensors",
     )
     assert "1" in prompt_char and prompt_char["1"]["inputs"]["ckpt_name"] == "Wai_Illustrious_v16.safetensors"
-    assert prompt_char["5"]["inputs"]["seed"] == 123456
-    assert "Sunny, slender" in prompt_char["2"]["inputs"]["text"]
-    print(" [PASS] Compiled WF-001 Character Design (Checkpoint + Prompt + Seed injected)")
+    assert prompt_char["6"]["inputs"]["seed"] == 123456
+    assert "slender 16-year-old" in prompt_char["4"]["inputs"]["text"]
+    print(" [PASS] Compiled WF-FOUNDRY-CHAR (Checkpoint + Prompt + Seed injected)")
 
-    # 2. Compile WF-003 Master Location Concept Plate
-    prompt_loc = ComfyUIWorkflowCompiler.compile_location_plate(
-        positive_prompt="frozen snowy mountain pass under twilight, slave caravan path",
+    # 2. Compile WF-FOUNDRY-LOC Master Location Concept Plate
+    prompt_loc = ComfyUIWorkflowCompiler.compile_foundry_loc(
+        loc_id="frozen_pass",
+        landscape_tags="frozen snowy mountain pass under twilight, slave caravan path",
         seed=654321,
     )
-    assert prompt_loc["4"]["inputs"]["width"] == 1216
-    assert prompt_loc["4"]["inputs"]["height"] == 832
-    assert prompt_loc["5"]["inputs"]["seed"] == 654321
-    print(" [PASS] Compiled WF-003 Location Plate (1216x832 resolution + Seed injected)")
+    assert prompt_loc["3"]["inputs"]["width"] == 1216
+    assert prompt_loc["3"]["inputs"]["height"] == 832
+    assert prompt_loc["6"]["inputs"]["seed"] == 654321
+    print(" [PASS] Compiled WF-FOUNDRY-LOC (1216x832 resolution + Seed injected)")
 
-    # 3. Compile WF-002 IPAdapter Character Consistency
-    prompt_ipa = ComfyUIWorkflowCompiler.compile_ipadapter_consistency(
-        reference_image_filename="Sunny_midjourney_art.png",
+    # 3. Compile WF-SHOT-SOLO Single-Character Workhorse
+    prompt_solo = ComfyUIWorkflowCompiler.compile_shot_solo(
+        shot_id="shot_001",
         positive_prompt="Sunny fighting pose, holding bronze sword",
-        ipadapter_weight=0.85,
+        face_ref_filename="Sunny_midjourney_art.png",
+        ipa_face_weight=0.85,
         seed=999888,
     )
-    assert prompt_ipa["4"]["inputs"]["image"] == "Sunny_midjourney_art.png"
-    assert prompt_ipa["6"]["inputs"]["weight"] == 0.85
-    assert prompt_ipa["10"]["inputs"]["seed"] == 999888
-    print(" [PASS] Compiled WF-002 IPAdapter Consistency (Image reference + weight 0.85 injected)")
+    assert prompt_solo["8"]["inputs"]["image"] == "Sunny_midjourney_art.png"
+    assert prompt_solo["9"]["inputs"]["weight"] == 0.85
+    assert prompt_solo["13"]["inputs"]["seed"] == 999888
+    print(" [PASS] Compiled WF-SHOT-SOLO (Face reference + IP-Adapter weight 0.85 injected)")
 
 
 def test_03_client_health_and_remote_config():
@@ -143,7 +176,6 @@ def test_04_visual_reference_lock_and_resolver(proj_id):
         print(" [PASS] Resolver seamlessly pulled locked reference image and canonical seed into scene prompt payload!")
 
     client.close()
-    return sunny_id
 
 
 def test_05_fastapi_comfyui_endpoints(proj_id, sunny_id):
@@ -165,7 +197,8 @@ def test_05_fastapi_comfyui_endpoints(proj_id, sunny_id):
     )
     assert res_compile.status_code == 200
     data = res_compile.json()
-    assert data["5"]["inputs"]["seed"] == 777
+    ksampler = next(v for v in data.values() if v.get("class_type") == "KSampler")
+    assert ksampler["inputs"]["seed"] == 777
     print(" [PASS] POST /comfyui/compile/turnaround -> compiled valid ComfyUI prompt JSON")
 
     # 3. Lock reference endpoint

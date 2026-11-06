@@ -44,10 +44,18 @@ class QCService:
         blur_threshold: float = 60.0,
         gate2_threshold: float = 0.30,
         vlm_client: Optional[Any] = None,
+        use_continuity_agent: bool = True,
     ):
         self.blur_threshold = blur_threshold
         self.gate2_threshold = gate2_threshold
         self.vlm_client = vlm_client
+        self.continuity_agent = None
+        if use_continuity_agent and vlm_client is None:
+            try:
+                from app.agents.qc_continuity_agent import VisualContinuityQCAgent
+                self.continuity_agent = VisualContinuityQCAgent()
+            except Exception as exc:
+                logger.warning("Could not instantiate VisualContinuityQCAgent: %s", exc)
 
     def evaluate_gate1(
         self,

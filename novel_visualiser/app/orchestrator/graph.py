@@ -359,9 +359,27 @@ def generate_images(state: ProductionState) -> ProductionState:
                                 state.shots_generated += 1
                                 continue
                         except Exception as e:
-                            logger.warning("ComfyUI remote job failed: %s; falling back to local canvas", e)
+                            logger.warning("ComfyUI remote job failed: %s", e)
 
-                    # Offline/preview canvas generation with OpenCV
+                    # Production Safeguard (VCE): Prevent silent mock substitution in production
+                    import os
+                    is_test_env = bool(
+                        settings.comfyui.allow_mock_fallback
+                        or os.environ.get("PYTEST_CURRENT_TEST")
+                        or os.environ.get("ALLOW_MOCK_FALLBACK")
+                    )
+
+                    if not is_test_env:
+                        logger.error(
+                            "ComfyUI unavailable for shot %s. Job marked BLOCKED to prevent mock leakage into film pipeline.",
+                            job.shot_id,
+                        )
+                        job.status = JobStatus.BLOCKED
+                        state.log(f"Job for shot {job.shot_id[:8]} BLOCKED: ComfyUI server unreachable")
+                        continue
+
+                    # Offline/preview canvas generation with OpenCV (Test environment only)
+                    logger.warning("Generating test mock canvas for shot %s (test mode active)", job.shot_id)
                     canvas = np.zeros((768, 1024, 3), dtype=np.uint8)
                     # Dark atmospheric gradient background
                     for y in range(768):

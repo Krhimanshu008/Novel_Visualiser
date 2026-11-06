@@ -222,6 +222,14 @@ class JobStatus(str, enum.Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     REJECTED = "rejected"
+    BLOCKED = "blocked"
+
+
+class ArcType(str, enum.Enum):
+    """Hierarchical level of an arc in the 4-tier taxonomy."""
+    MAJOR = "major"       # Tier 1 (Volume / Macro saga: 50-150 chapters)
+    SUB = "sub"           # Tier 2 (Regional phase: 15-45 chapters)
+    MINI = "mini"         # Tier 3 (Mission / Tactical quest beat: 3-8 chapters)
 
 
 class ProsodyTag(str, enum.Enum):
@@ -290,7 +298,7 @@ class Project(Base):
 
 
 class Arc(Base):
-    """A narrative arc spanning one or more chapters."""
+    """A narrative arc spanning one or more chapters, supporting hierarchical trees and parallel storylines."""
 
     __tablename__ = "arcs"
 
@@ -300,11 +308,24 @@ class Arc(Base):
     project_id: Mapped[str] = mapped_column(
         sa.String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False,
     )
+    parent_arc_id: Mapped[Optional[str]] = mapped_column(
+        sa.String(36), ForeignKey("arcs.id", ondelete="CASCADE"), nullable=True,
+    )
+    arc_type: Mapped[ArcType] = mapped_column(
+        sa.Enum(ArcType), default=ArcType.MAJOR, nullable=False,
+    )
     name: Mapped[str] = mapped_column(sa.String(255), nullable=False)
     arc_number: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     start_chapter: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     end_chapter: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Parallel storylines & in-universe timeline
+    parallel_thread_id: Mapped[Optional[str]] = mapped_column(sa.String(64), nullable=True)
+    timeline_day_start: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
+    timeline_day_end: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
+    in_universe_weather: Mapped[Optional[str]] = mapped_column(sa.String(128), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime, default=datetime.utcnow, nullable=False,
     )
@@ -313,9 +334,11 @@ class Arc(Base):
     project: Mapped["Project"] = relationship(back_populates="arcs")
     chapters: Mapped[List["Chapter"]] = relationship(back_populates="arc")
     asset_versions: Mapped[List["AssetVersion"]] = relationship(back_populates="arc")
+    children: Mapped[List["Arc"]] = relationship("Arc", back_populates="parent")
+    parent: Mapped[Optional["Arc"]] = relationship("Arc", back_populates="children", remote_side=[id])
 
     def __repr__(self) -> str:
-        return f"<Arc id={self.id!r} name={self.name!r} arc_number={self.arc_number}>"
+        return f"<Arc id={self.id!r} name={self.name!r} type={self.arc_type.value} arc_number={self.arc_number}>"
 
 
 class Chapter(Base):

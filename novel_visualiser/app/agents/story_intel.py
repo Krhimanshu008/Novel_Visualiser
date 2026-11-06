@@ -475,3 +475,172 @@ Chapter Text:
         data = json.loads(response.text)
         return ChapterAnalysis.model_validate(data)
 
+
+class ArcTimelineManager:
+    """Manages the 4-tier Arc and Timeline hierarchy (Major > Sub > Mini + Parallel Threads)."""
+
+    @staticmethod
+    def build_default_arc_hierarchy(
+        project_id: str,
+        total_chapters: int,
+        novel_title: str = "Shadow Slave",
+    ) -> list[Any]:
+        """Construct a structured multi-tier arc hierarchy for a novel."""
+        from app.schemas.arc_hierarchy import ArcNode, ArcType
+
+        # Example / Default hierarchy: Major Arc 1 (Forgotten Shore)
+        # Decomposed into Sub-Arcs and Mini-Arcs
+        nodes: list[ArcNode] = []
+
+        # Major Arc 1 (Ch 1 - min(total_chapters, 98))
+        major_end = min(total_chapters, 98)
+        major_node = ArcNode(
+            arc_id=f"arc_major_01_{project_id[:8]}",
+            project_id=project_id,
+            name="Major Arc 1: The Forgotten Shore",
+            arc_type=ArcType.MAJOR,
+            arc_number=1,
+            start_chapter=1,
+            end_chapter=major_end,
+            description="The First Nightmare and the perilous survival on the desolate Forgotten Shore.",
+            timeline_day_start=1,
+            timeline_day_end=120,
+            in_universe_weather="Toxic sea fog and harsh eclipse tides",
+        )
+
+        # Sub-Arc 1.1: The Ashen Barrow (Ch 1 - 25)
+        sub1_end = min(major_end, 25)
+        sub1 = ArcNode(
+            arc_id=f"arc_sub_01_{project_id[:8]}",
+            project_id=project_id,
+            name="Sub-Arc 1.1: The Ashen Barrow",
+            arc_type=ArcType.SUB,
+            arc_number=1,
+            start_chapter=1,
+            end_chapter=sub1_end,
+            parent_arc_id=major_node.arc_id,
+            timeline_day_start=1,
+            timeline_day_end=14,
+            in_universe_weather="Freezing gale and black snow",
+        )
+
+        # Mini-Arc 1.1.1: The Awakening (Ch 1 - 5)
+        mini1 = ArcNode(
+            arc_id=f"arc_mini_01_{project_id[:8]}",
+            project_id=project_id,
+            name="Mini-Arc 1.1.1: The First Nightmare Awakening",
+            arc_type=ArcType.MINI,
+            arc_number=1,
+            start_chapter=1,
+            end_chapter=min(sub1_end, 5),
+            parent_arc_id=sub1.arc_id,
+            timeline_day_start=1,
+            timeline_day_end=3,
+        )
+        sub1.children.append(mini1)
+
+        # Mini-Arc 1.1.2: Mountain Caravan (Ch 6 - sub1_end)
+        if sub1_end >= 6:
+            mini2 = ArcNode(
+                arc_id=f"arc_mini_02_{project_id[:8]}",
+                project_id=project_id,
+                name="Mini-Arc 1.1.2: Mountain Caravan & Tyrant Encounter",
+                arc_type=ArcType.MINI,
+                arc_number=2,
+                start_chapter=6,
+                end_chapter=sub1_end,
+                parent_arc_id=sub1.arc_id,
+                timeline_day_start=4,
+                timeline_day_end=14,
+            )
+            sub1.children.append(mini2)
+
+        major_node.children.append(sub1)
+
+        # Sub-Arc 1.2: The Dark City & Parallel Storylines (Ch 26 - major_end)
+        if major_end >= 26:
+            sub2 = ArcNode(
+                arc_id=f"arc_sub_02_{project_id[:8]}",
+                project_id=project_id,
+                name="Sub-Arc 1.2: The Dark City & Labyrinth",
+                arc_type=ArcType.SUB,
+                arc_number=2,
+                start_chapter=26,
+                end_chapter=major_end,
+                parent_arc_id=major_node.arc_id,
+                timeline_day_start=15,
+                timeline_day_end=80,
+                in_universe_weather="Dark mist and eternal crimson sunset",
+            )
+
+            # Parallel Thread Alpha: Sunny Solo Labyrinth
+            mini_parallel_a = ArcNode(
+                arc_id=f"arc_mini_03_alpha_{project_id[:8]}",
+                project_id=project_id,
+                name="Mini-Arc 1.2.1A: Sunny Solo Ruins Expedition",
+                arc_type=ArcType.MINI,
+                arc_number=3,
+                start_chapter=26,
+                end_chapter=min(major_end, 50),
+                parent_arc_id=sub2.arc_id,
+                parallel_thread_id="thread_sunny_solo",
+                timeline_day_start=15,
+                timeline_day_end=40,
+            )
+            sub2.children.append(mini_parallel_a)
+            major_node.children.append(sub2)
+
+        nodes.append(major_node)
+        return nodes
+
+    @staticmethod
+    def persist_arc_hierarchy(
+        db: Session,
+        project_id: str,
+        arc_nodes: list[Any],
+    ) -> dict[str, str]:
+        """Persist recursive Arc hierarchy into SQLite and link chapters."""
+        from app.database.models import Arc, Chapter
+
+        created_map: dict[str, str] = {}
+
+        def _persist_node(node: Any, parent_id: Optional[str] = None):
+            arc_record = Arc(
+                id=node.arc_id,
+                project_id=project_id,
+                parent_arc_id=parent_id or node.parent_arc_id,
+                arc_type=node.arc_type.value if hasattr(node.arc_type, "value") else str(node.arc_type),
+                name=node.name,
+                arc_number=node.arc_number,
+                start_chapter=node.start_chapter,
+                end_chapter=node.end_chapter,
+                description=node.description,
+                parallel_thread_id=node.parallel_thread_id,
+                timeline_day_start=node.timeline_day_start,
+                timeline_day_end=node.timeline_day_end,
+                in_universe_weather=node.in_universe_weather,
+            )
+            db.merge(arc_record)
+            created_map[node.arc_id] = node.name
+
+            # Assign chapters in range to this arc if leaf (Mini Arc) or closest sub-arc
+            ch_query = select(Chapter).where(
+                Chapter.project_id == project_id,
+                Chapter.chapter_number >= node.start_chapter,
+                Chapter.chapter_number <= node.end_chapter,
+            )
+            matching_chapters = db.execute(ch_query).scalars().all()
+            for ch in matching_chapters:
+                # Leaf nodes override parent arc associations
+                ch.arc_id = node.arc_id
+
+            for child in node.children:
+                _persist_node(child, parent_id=node.arc_id)
+
+        for root in arc_nodes:
+            _persist_node(root)
+
+        db.commit()
+        logger.info("Persisted %d arc nodes into SQLite for project %s", len(created_map), project_id)
+        return created_map
+

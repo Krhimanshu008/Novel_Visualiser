@@ -401,3 +401,156 @@ def get_safe_knowledge(
         "reference_images": images,
     }
 
+
+def resolve_shot_visual_context(
+    db: Session,
+    shot: Any,
+    chapter_number: int,
+    arc_id: str | None = None,
+    style_profile_id: str = "STYLE-001",
+) -> Any:
+    """Resolve a ShotSpec or Shot model into a fully resolved ShotVisualContext.
+    
+    Acts as the bridge between scene direction and the 8-block prompt compiler.
+    """
+    from app.schemas.visual_context import (
+        ShotVisualContext,
+        SubjectVisualState,
+        DanbooruIdentityLock,
+        OutfitCard,
+        LocationPlateSpec,
+    )
+
+    shot_id = getattr(shot, "id", None) or getattr(shot, "shot_id", "shot_001")
+    workflow_id = getattr(shot, "workflow_id", "WF-SHOT-001")
+    shot_type = getattr(shot, "shot_type", "medium")
+    camera_angle = getattr(shot, "camera_angle", "eye_level")
+    lighting = getattr(shot, "lighting_override", None)
+    vfx_tag = getattr(shot, "vfx_overlay_tag", None)
+    raw_subjects = getattr(shot, "subjects", [])
+
+    resolved_subjects: list[SubjectVisualState] = []
+    for sub in raw_subjects:
+        eid = getattr(sub, "entity_id", None) or (sub.get("entity_id") if isinstance(sub, dict) else None)
+        ename = getattr(sub, "entity_name", None) or (sub.get("entity_name") if isinstance(sub, dict) else eid)
+        pose = getattr(sub, "pose", None) or (sub.get("pose") if isinstance(sub, dict) else None)
+        expr = getattr(sub, "expression", None) or (sub.get("expression") if isinstance(sub, dict) else None)
+        box = getattr(sub, "region_box", None) or (sub.get("region_box") if isinstance(sub, dict) else [0.0, 0.0, 1.0, 1.0])
+
+        pose_expr = f"{pose or 'standing'}, {expr or 'looking at viewer'}"
+        
+        # Resolve assets
+        res_data = {}
+        if eid:
+            try:
+                res_data = resolve_asset_for_scene(db, eid, arc_id, chapter_number)
+            except Exception as exc:
+                logger.warning("Could not resolve asset for entity %s: %s", eid, exc)
+
+        canon = res_data.get("canonical", {})
+        arc = res_data.get("arc", {})
+        delta = res_data.get("chapter_delta", {})
+
+        # Identity lock
+        id_lock = None
+        if "danbooru_identity_lock" in canon:
+            id_lock = DanbooruIdentityLock(**canon["danbooru_identity_lock"])
+        else:
+            tags = []
+            if canon.get("species"): tags.append(canon["species"])
+            if canon.get("physique"): tags.append(canon["physique"])
+            if canon.get("hair"): tags.append(canon["hair"])
+            if canon.get("eyes"): tags.append(canon["eyes"])
+            if canon.get("skin_color"): tags.append(canon["skin_color"])
+            id_lock = DanbooruIdentityLock(
+                entity_id=eid or "unknown",
+                entity_name=ename or "Subject",
+                core_danbooru_tags=tags or [ename or "character"],
+                canonical_seed=res_data.get("canonical_seed", 42),
+                reference_image_path=res_data.get("reference_image_path"),
+            )
+
+        # Outfit card
+        outfit = None
+        if "outfit_card" in arc:
+            outfit = OutfitCard(**arc["outfit_card"])
+        else:
+            c_tags = []
+            if arc.get("clothing"): c_tags.append(arc["clothing"])
+            if arc.get("armor"): c_tags.append(arc["armor"])
+            outfit = OutfitCard(
+                outfit_id=f"OUTFIT-{eid or 'UNK'}",
+                entity_id=eid or "unknown",
+                outfit_name="Arc Attire",
+                valid_from_chapter=chapter_number,
+                danbooru_clothing_tags=c_tags or ["standard clothes"],
+            )
+
+        # Held equipment
+        held = []
+        if arc.get("weapons"):
+            held.append(f"holding {arc['weapons']}")
+        if arc.get("accessories"):
+            acc = arc["accessories"]
+            if isinstance(acc, list):
+                held.extend([str(a) for a in acc])
+            else:
+                held.append(str(acc))
+
+        # Temporal deltas
+        deltas = []
+        if delta.get("injuries"):
+            inj = delta["injuries"]
+            deltas.extend(inj if isinstance(inj, list) else [str(inj)])
+        if delta.get("conditions"):
+            cond = delta["conditions"]
+            deltas.extend(cond if isinstance(cond, list) else [str(cond)])
+
+        resolved_subjects.append(
+            SubjectVisualState(
+                entity_id=eid or "unknown",
+                entity_name=ename or "Subject",
+                identity_lock=id_lock,
+                outfit=outfit,
+                held_equipment=held,
+                temporal_deltas=deltas,
+                pose_expression=pose_expr,
+                region_box=box,
+            )
+        )
+
+    # Resolve environment
+    env_spec = None
+    loc_id = getattr(shot, "location_id", None)
+    if loc_id:
+        try:
+            loc_res = resolve_asset_for_scene(db, loc_id, arc_id, chapter_number)
+            p_tags = [str(v) for v in loc_res.get("canonical", {}).values() if v]
+            env_spec = LocationPlateSpec(
+                location_id=loc_id,
+                location_name="Scene Location",
+                plate_tags=p_tags or ["dungeon corridor"],
+                plate_reference_path=loc_res.get("reference_image_path"),
+            )
+        except Exception:
+            pass
+
+    return ShotVisualContext(
+        shot_id=str(shot_id),
+        chapter_number=chapter_number,
+        style_profile_id=style_profile_id,
+        workflow_id=str(workflow_id),
+        framing=shot_type if shot_type in [
+            "close_up", "medium_close_up", "medium", "medium_wide", "wide",
+            "extreme_wide", "two_shot", "group", "pov", "over_the_shoulder", "insert"
+        ] else "medium",
+        camera_angle=camera_angle if camera_angle in [
+            "eye_level", "low_angle_dramatic", "high_angle", "dutch_angle",
+            "birds_eye", "worms_eye", "profile"
+        ] else "eye_level",
+        environment=env_spec,
+        subjects=resolved_subjects,
+        lighting_atmosphere=[lighting] if lighting else ["cinematic lighting"],
+        vfx_particles=[vfx_tag] if vfx_tag else [],
+    )
+

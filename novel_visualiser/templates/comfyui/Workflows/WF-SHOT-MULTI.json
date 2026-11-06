@@ -1,0 +1,405 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "waiNSFWIllustrious_v110.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "sdxl_vae_fp16_fix.safetensors"
+    }
+  },
+  "3": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1216,
+      "height": 832,
+      "batch_size": 1
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "masterpiece, best quality, wide two-shot, ancient gothic ruins",
+      "clip": [
+        "1",
+        1
+      ]
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "masterpiece, best quality, 1boy, combat stance",
+      "clip": [
+        "1",
+        1
+      ]
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "masterpiece, best quality, 1girl, composed stance",
+      "clip": [
+        "1",
+        1
+      ]
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "low quality, worst quality, blurry, bad anatomy, deformed limbs, extra arms, extra legs, missing fingers, extra fingers, floating limbs, disconnected limbs, mutation, poorly drawn face, poorly drawn hands, cropped, out of frame, watermark, signature, text, modern clothing, oversaturated, flat shading",
+      "clip": [
+        "1",
+        1
+      ]
+    }
+  },
+  "8": {
+    "class_type": "SolidMask",
+    "inputs": {
+      "value": 0.0,
+      "width": 1216,
+      "height": 832
+    }
+  },
+  "9": {
+    "class_type": "SolidMask",
+    "inputs": {
+      "value": 1.0,
+      "width": 547,
+      "height": 666
+    }
+  },
+  "10": {
+    "class_type": "MaskComposite",
+    "inputs": {
+      "destination": [
+        "8",
+        0
+      ],
+      "source": [
+        "9",
+        0
+      ],
+      "x": 0,
+      "y": 83,
+      "operation": "add"
+    }
+  },
+  "11": {
+    "class_type": "MaskComposite",
+    "inputs": {
+      "destination": [
+        "8",
+        0
+      ],
+      "source": [
+        "9",
+        0
+      ],
+      "x": 669,
+      "y": 83,
+      "operation": "add"
+    }
+  },
+  "12": {
+    "class_type": "ConditioningSetMask",
+    "inputs": {
+      "conditioning": [
+        "5",
+        0
+      ],
+      "mask": [
+        "10",
+        0
+      ],
+      "strength": 1.0,
+      "set_cond_area": "default"
+    }
+  },
+  "13": {
+    "class_type": "ConditioningSetMask",
+    "inputs": {
+      "conditioning": [
+        "6",
+        0
+      ],
+      "mask": [
+        "11",
+        0
+      ],
+      "strength": 1.0,
+      "set_cond_area": "default"
+    }
+  },
+  "14": {
+    "class_type": "ConditioningCombine",
+    "inputs": {
+      "conditioning_1": [
+        "4",
+        0
+      ],
+      "conditioning_2": [
+        "12",
+        0
+      ]
+    }
+  },
+  "15": {
+    "class_type": "ConditioningCombine",
+    "inputs": {
+      "conditioning_1": [
+        "14",
+        0
+      ],
+      "conditioning_2": [
+        "13",
+        0
+      ]
+    }
+  },
+  "16": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+    }
+  },
+  "17": {
+    "class_type": "IPAdapterModelLoader",
+    "inputs": {
+      "ipadapter_file": "ip-adapter-plus-face_sdxl_vit-h.safetensors"
+    }
+  },
+  "18": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "char1_face.png"
+    }
+  },
+  "19": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "char2_face.png"
+    }
+  },
+  "20": {
+    "class_type": "IPAdapterAdvanced",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "ipadapter": [
+        "17",
+        0
+      ],
+      "image": [
+        "18",
+        0
+      ],
+      "weight": 0.35,
+      "weight_type": "linear",
+      "combine_embeds": "concat",
+      "start_at": 0.0,
+      "end_at": 0.85,
+      "embeds_scaling": "V only",
+      "clip_vision": [
+        "16",
+        0
+      ],
+      "attn_mask": [
+        "10",
+        0
+      ]
+    }
+  },
+  "21": {
+    "class_type": "IPAdapterAdvanced",
+    "inputs": {
+      "model": [
+        "20",
+        0
+      ],
+      "ipadapter": [
+        "17",
+        0
+      ],
+      "image": [
+        "19",
+        0
+      ],
+      "weight": 0.35,
+      "weight_type": "linear",
+      "combine_embeds": "concat",
+      "start_at": 0.0,
+      "end_at": 0.85,
+      "embeds_scaling": "V only",
+      "clip_vision": [
+        "16",
+        0
+      ],
+      "attn_mask": [
+        "11",
+        0
+      ]
+    }
+  },
+  "22": {
+    "class_type": "ControlNetLoader",
+    "inputs": {
+      "control_net_name": "xinsir-controlnet-union-sdxl-1.0-promax.safetensors"
+    }
+  },
+  "23": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "loc_depth_guide.png"
+    }
+  },
+  "24": {
+    "class_type": "ControlNetApplyAdvanced",
+    "inputs": {
+      "positive": [
+        "15",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "control_net": [
+        "22",
+        0
+      ],
+      "image": [
+        "23",
+        0
+      ],
+      "strength": 0.45,
+      "start_percent": 0.0,
+      "end_percent": 0.7,
+      "vae": [
+        "2",
+        0
+      ]
+    }
+  },
+  "25": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 400,
+      "steps": 28,
+      "cfg": 6.5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 1.0,
+      "model": [
+        "21",
+        0
+      ],
+      "positive": [
+        "24",
+        0
+      ],
+      "negative": [
+        "24",
+        1
+      ],
+      "latent_image": [
+        "3",
+        0
+      ]
+    }
+  },
+  "26": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "25",
+        0
+      ],
+      "vae": [
+        "2",
+        0
+      ]
+    }
+  },
+  "27": {
+    "class_type": "UltralyticsDetectorProvider",
+    "inputs": {
+      "model_name": "bbox/face_yolov8n.pt"
+    }
+  },
+  "28": {
+    "class_type": "FaceDetailer",
+    "inputs": {
+      "image": [
+        "26",
+        0
+      ],
+      "model": [
+        "21",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ],
+      "vae": [
+        "2",
+        0
+      ],
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 401,
+      "steps": 15,
+      "cfg": 6.0,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "positive": [
+        "15",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "denoise": 0.38,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 10,
+      "bbox_crop_factor": 3.0,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "bbox_detector": [
+        "27",
+        0
+      ],
+      "wildcard": "",
+      "cycle": 1
+    }
+  },
+  "29": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "28",
+        0
+      ],
+      "filename_prefix": "WF05_MULTI_template_multi"
+    }
+  }
+}

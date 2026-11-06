@@ -84,6 +84,31 @@ def init_db(database_path: str | None = None) -> Engine:
     Base.metadata.create_all(bind=_engine)
     logger.info("Database tables created/verified at %s", db_path)
 
+    # Lightweight SQLite auto-migration for newly added columns
+    try:
+        with _engine.connect() as conn:
+            cursor = conn.connection.cursor()
+            cursor.execute("PRAGMA table_info(arcs);")
+            existing_cols = {row[1] for row in cursor.fetchall()}
+            new_cols = [
+                ("parent_arc_id", "VARCHAR(36)"),
+                ("arc_type", "VARCHAR(16) DEFAULT 'major'"),
+                ("parallel_thread_id", "VARCHAR(64)"),
+                ("timeline_day_start", "INTEGER"),
+                ("timeline_day_end", "INTEGER"),
+                ("in_universe_weather", "VARCHAR(128)"),
+            ]
+            for col_name, col_def in new_cols:
+                if col_name not in existing_cols:
+                    try:
+                        cursor.execute(f"ALTER TABLE arcs ADD COLUMN {col_name} {col_def};")
+                    except Exception as exc:
+                        logger.debug("Column %s add note: %s", col_name, exc)
+            cursor.close()
+            conn.commit()
+    except Exception as exc:
+        logger.debug("Auto-migration note: %s", exc)
+
     _SessionFactory = sessionmaker(bind=_engine, expire_on_commit=False)
 
     return _engine
