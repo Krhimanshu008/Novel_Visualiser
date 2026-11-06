@@ -34,6 +34,10 @@ class LLMSettings(BaseSettings):
     google_api_key_secondary: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY_SECONDARY")
     gemini_model: str = Field(default="gemini-2.5-flash")
 
+    # --- Groq (Ultra-Fast LPUs) ---
+    groq_api_key: Optional[str] = Field(default=None, alias="GROQ_API_KEY")
+    groq_model: str = Field(default="qwen/qwen3.8-27b")
+
     # --- OpenRouter (Multi-Model Agentic Gateway) ---
     openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
     openrouter_model: str = Field(default="nvidia/nemotron-3.5-lightning:free")

@@ -63,6 +63,8 @@ class KaggleAISettings:
         self.google_api_key: str = os.getenv("GOOGLE_API_KEY", "")
         self.google_api_key_secondary: str = os.getenv("GOOGLE_API_KEY_SECONDARY", "")
         self.gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+        self.groq_model: str = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
         self.openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
         self.openrouter_model: str = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
 

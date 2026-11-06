@@ -101,14 +101,21 @@ class KaggleModelProxyClient:
             except Exception as err:
                 logger.warning("Kaggle SDK prompt error: %s; falling back", err)
 
-        # Fallback to direct Gemini API if configured
+        # Fallback 1: Ultra-fast Groq LPU inference if configured
+        if getattr(self.settings, "groq_api_key", None):
+            try:
+                return self._groq_direct_fallback(messages, model=model, temperature=temperature, max_tokens=max_tokens)
+            except Exception as e:
+                logger.warning("Groq direct fallback failed: %s; trying Gemini/OpenRouter", e)
+
+        # Fallback 2: Direct Gemini API if configured
         if self.settings.google_api_key or getattr(self.settings, "google_api_key_secondary", None):
             try:
                 return self._gemini_direct_fallback(messages, temperature=temperature, max_tokens=max_tokens)
             except Exception as e:
                 logger.warning("Gemini direct fallback failed: %s; trying OpenRouter", e)
 
-        # Fallback to OpenRouter multi-model gateway
+        # Fallback 3: OpenRouter multi-model gateway
         if getattr(self.settings, "openrouter_api_key", None):
             return self._openrouter_direct_fallback(messages, model=model, temperature=temperature, max_tokens=max_tokens)
 
@@ -278,6 +285,37 @@ class KaggleModelProxyClient:
             "max_tokens": max_tokens,
         }
         resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body, timeout=self.timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+
+    def _groq_direct_fallback(
+        self,
+        messages: list[dict[str, Any]],
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 4096,
+    ) -> str:
+        """Direct Groq LPU API call for ultra-fast chat completion."""
+        import requests
+        api_key = self.settings.groq_api_key
+        target_model = model or getattr(self.settings, "groq_model", "qwen/qwen3.8-27b")
+        allowed_groq = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"]
+        if target_model not in allowed_groq:
+            target_model = getattr(self.settings, "groq_model", "qwen/qwen3.8-27b")
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        body = {
+            "model": target_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=body, timeout=self.timeout)
         resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]["content"]
