@@ -1,8 +1,8 @@
 # Research Dossier: Sunny
-**Canonical Entity ID:** `1c109bf3-053c-4d58-8770-c6e45d5cb217`  
+**Canonical Entity ID:** `02307ee0-2aa1-46d8-9d4f-6208e02c5e97`  
 **Source URL:** [https://shadowslave.fandom.com/wiki/Sunny](https://shadowslave.fandom.com/wiki/Sunny)  
 **First Appearance:** Chapter 1  
-**Scraped At:** 2026-11-06 07:32:48 UTC  
+**Scraped At:** 2026-11-06 11:37:40 UTC  
 
 ## 1. Infobox Attributes
 - **image1:** 

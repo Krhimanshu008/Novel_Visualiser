@@ -19,3 +19,4 @@ data/
 ```
 
 For full documentation on how data is harvested, spoiler-gated, and persisted to SQLite, see [RESEARCH_AGENT_GUIDE.md](../RESEARCH_AGENT_GUIDE.md).
+

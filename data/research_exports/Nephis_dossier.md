@@ -1,8 +1,8 @@
 # Research Dossier: Nephis
-**Canonical Entity ID:** `08923dcb-6070-4bec-8baf-b2cb0e1de499`  
+**Canonical Entity ID:** `f8f5a66c-b6f2-450a-ad22-a5350d24d1a2`  
 **Source URL:** [https://shadowslave.fandom.com/wiki/Nephis](https://shadowslave.fandom.com/wiki/Nephis)  
 **First Appearance:** Chapter 1  
-**Scraped At:** 2026-11-06 07:33:09 UTC  
+**Scraped At:** 2026-11-06 11:38:08 UTC  
 
 ## 1. Infobox Attributes
 - **image1:** 

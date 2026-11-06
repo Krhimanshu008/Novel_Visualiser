@@ -13,6 +13,7 @@ tests = [
     "test_phase3_verification.py",
     "test_phase4_verification.py",
     "test_phase5_verification.py",
+    "test_universal_reasoning_agent.py",
 ]
 
 base_dir = Path(__file__).resolve().parent.parent / "tests"

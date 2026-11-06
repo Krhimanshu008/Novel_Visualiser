@@ -106,6 +106,8 @@ class SourceType(str, enum.Enum):
     COMMUNITY_ART = "community_art"
     PUBLICATION = "publication"
     WEB_ARTICLE = "web_article"
+    EPUB_NOVEL = "epub_novel"
+    HYBRID = "hybrid"
 
 
 class LicenseStatus(str, enum.Enum):
@@ -114,6 +116,8 @@ class LicenseStatus(str, enum.Enum):
     PUBLIC_DOMAIN = "public_domain"
     FAIR_USE = "fair_use"
     RESTRICTED = "restricted"
+    CANONICAL_EPUB = "canonical_epub"
+    CC_BY_SA = "CC-BY-SA"
 
 
 class ClaimType(str, enum.Enum):
@@ -126,6 +130,14 @@ class ClaimType(str, enum.Enum):
     TITLE = "title"
     ALIAS = "alias"
     BACKSTORY = "backstory"
+    PHYSIQUE = "physique"
+    HAIR = "hair"
+    EYES = "eyes"
+    ATTIRE = "attire"
+    AURA = "aura"
+    ENVIRONMENT = "environment"
+    ANATOMY = "anatomy"
+    CORE_TRAIT = "core_trait"
 
 
 class Confidence(str, enum.Enum):
@@ -164,6 +176,12 @@ class AliasType(str, enum.Enum):
     NICKNAME = "nickname"
     DESCRIPTION_REFERENCE = "description_reference"
     CODENAME = "codename"
+    BIRTH_NAME = "birth_name"
+    PERSONA = "persona"
+    TRUE_NAME = "true_name"
+    EPITHET = "epithet"
+    TAROT_PERSONA = "tarot_persona"
+    ALTERNATE_NAME = "alternate_name"
 
 
 class AssetLevel(str, enum.Enum):
@@ -269,6 +287,9 @@ class Project(Base):
     novel_title: Mapped[str] = mapped_column(sa.String(500), nullable=False)
     author: Mapped[str] = mapped_column(sa.String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    wiki_url: Mapped[Optional[str]] = mapped_column(sa.String(512), nullable=True)
+    epub_path: Mapped[Optional[str]] = mapped_column(sa.String(1024), nullable=True)
+    genre_style: Mapped[Optional[str]] = mapped_column(sa.String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime, default=datetime.utcnow, nullable=False,
     )
@@ -556,11 +577,12 @@ class ResearchSource(Base):
     title: Mapped[str] = mapped_column(sa.String(500), nullable=False)
     scraped_at: Mapped[Optional[datetime]] = mapped_column(sa.DateTime, nullable=True)
     license_status: Mapped[LicenseStatus] = mapped_column(
-        sa.Enum(LicenseStatus, native_enum=False, length=20),
+        sa.Enum(LicenseStatus, native_enum=False, length=30),
         default=LicenseStatus.UNKNOWN,
         nullable=False,
     )
     raw_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(sa.String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime, default=datetime.utcnow, nullable=False,
     )
@@ -606,6 +628,15 @@ class ResearchClaim(Base):
     valid_to_chapter: Mapped[Optional[int]] = mapped_column(
         sa.Integer, nullable=True, doc="NULL means the claim is valid indefinitely.",
     )
+    valid_until_chapter: Mapped[Optional[int]] = mapped_column(
+        sa.Integer, nullable=True, doc="Alias/equivalent to valid_to_chapter."
+    )
+    era_name: Mapped[Optional[str]] = mapped_column(
+        sa.String(255), nullable=True, default="Base Era"
+    )
+    danbooru_tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    flux_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    negative_tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     confidence: Mapped[Confidence] = mapped_column(
         sa.Enum(Confidence, native_enum=False, length=15),
         default=Confidence.LIKELY,
@@ -614,6 +645,13 @@ class ResearchClaim(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime, default=datetime.utcnow, nullable=False,
     )
+
+    def __init__(self, **kwargs):
+        if "valid_until_chapter" in kwargs and "valid_to_chapter" not in kwargs:
+            kwargs["valid_to_chapter"] = kwargs["valid_until_chapter"]
+        elif "valid_to_chapter" in kwargs and "valid_until_chapter" not in kwargs:
+            kwargs["valid_until_chapter"] = kwargs["valid_to_chapter"]
+        super().__init__(**kwargs)
 
     # -- relationships --
     source: Mapped["ResearchSource"] = relationship(back_populates="claims")
@@ -740,7 +778,7 @@ class EntityAlias(Base):
     )
     alias: Mapped[str] = mapped_column(sa.String(500), nullable=False)
     alias_type: Mapped[AliasType] = mapped_column(
-        sa.Enum(AliasType, native_enum=False, length=25), nullable=False,
+        sa.Enum(AliasType, native_enum=False, length=50), nullable=False,
     )
     valid_from_chapter: Mapped[int] = mapped_column(sa.Integer, default=1, nullable=False)
     reveal_chapter: Mapped[Optional[int]] = mapped_column(

@@ -302,27 +302,33 @@ def resolve_all_subjects_for_shot(
     return resolved
 
 
+def _parse_json_list(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        return [str(x).strip() for x in parsed if str(x).strip()] if isinstance(parsed, list) else []
+    except Exception:
+        return [x.strip() for x in raw.split(",") if x.strip()]
+
+
 def get_safe_knowledge(
     db: Session,
     entity_id: str,
     current_chapter: int,
 ) -> dict[str, Any]:
     """
-    THE SPOILER GATE.
+    THE SPOILER GATE & TEMPORAL ERA RESOLVER (0 LLM Tokens).
 
     Returns all known information about an entity strictly bounded by
     the current chapter. No downstream agent is allowed to query the
     research_claims or entity_aliases tables directly — they MUST go
     through this function.
 
-    Args:
-        db: Active SQLAlchemy session.
-        entity_id: UUID of the entity.
-        current_chapter: The chapter number acting as the spoiler boundary.
-
-    Returns:
-        Dictionary with 'aliases', 'claims', 'images', and 'novel_passages'
-        all filtered to only include information known by current_chapter.
+    - Blocks entities before their debut chapter.
+    - Filters aliases where valid_from_chapter <= current_chapter and reveal_chapter <= current_chapter.
+    - Filters claims active during current_chapter: valid_from <= current_chapter <= valid_until.
+    - Automatically turns FUTURE claims (valid_from > current_chapter) into anti_spoiler_negative_tags!
     """
     from app.database.models import (
         Entity, EntityAlias, ResearchClaim, ResearchImage, Passage
@@ -336,69 +342,153 @@ def get_safe_knowledge(
     if entity is None:
         raise ValueError(f"Entity not found: {entity_id}")
 
-    # Safe aliases: only those revealed by current_chapter
-    aliases_query = (
-        select(EntityAlias)
-        .where(
-            and_(
-                EntityAlias.entity_id == entity_id,
-                EntityAlias.valid_from_chapter <= current_chapter,
-                # Only include if reveal_chapter is None (always known) or <= current
-                (EntityAlias.reveal_chapter.is_(None)) |
-                (EntityAlias.reveal_chapter <= current_chapter),
-            )
-        )
-    )
-    aliases = [
-        {"alias": a.alias, "type": a.alias_type.value if hasattr(a.alias_type, 'value') else str(a.alias_type)}
-        for a in db.execute(aliases_query).scalars().all()
-    ]
-
-    # Safe research claims
-    claims_query = (
-        select(ResearchClaim)
-        .where(
-            and_(
-                ResearchClaim.entity_id == entity_id,
-                ResearchClaim.valid_from_chapter <= current_chapter,
-                (ResearchClaim.valid_to_chapter.is_(None)) |
-                (ResearchClaim.valid_to_chapter >= current_chapter),
-            )
-        )
-    )
-    claims = [
-        {
-            "claim_type": c.claim_type.value if hasattr(c.claim_type, 'value') else str(c.claim_type),
-            "claim_text": c.claim_text,
-            "confidence": c.confidence.value if hasattr(c.confidence, 'value') else str(c.confidence),
-            "valid_from": c.valid_from_chapter,
+    first_appearance = getattr(entity, "first_appearance_chapter", 1) or 1
+    if first_appearance > current_chapter:
+        return {
+            "status": "locked_spoiler",
+            "allowed": False,
+            "entity_id": entity.id,
+            "entity_name": entity.canonical_name,
+            "canonical_name": entity.canonical_name,
+            "entity_type": entity.entity_type.value if hasattr(entity.entity_type, 'value') else str(entity.entity_type),
+            "current_chapter": current_chapter,
+            "reason": f"Entity '{entity.canonical_name}' debuts at Ch. {first_appearance} (Current: Ch. {current_chapter})",
+            "known_aliases": [],
+            "visual_claims": [],
+            "reference_images": [],
+            "safe_aliases": [],
+            "blocked_spoiler_aliases": [],
+            "active_claims": [],
+            "danbooru_prompt": "",
+            "flux_natural_prompt": "",
+            "anti_spoiler_negative_prompt": "",
+            "canonical_reference_image": None,
         }
-        for c in db.execute(claims_query).scalars().all()
-    ]
 
-    # Safe images
-    images_query = (
-        select(ResearchImage)
-        .where(ResearchImage.entity_id == entity_id)
-    )
-    images = [
+    # 1. Resolve Safe vs Blocked Aliases
+    all_aliases = db.execute(
+        select(EntityAlias).where(EntityAlias.entity_id == entity_id)
+    ).scalars().all()
+
+    safe_aliases: list[str] = []
+    blocked_aliases: list[str] = []
+    aliases_legacy: list[dict[str, str]] = []
+
+    for a in all_aliases:
+        reveal_ch = a.reveal_chapter if a.reveal_chapter is not None else a.valid_from_chapter
+        is_safe = (a.valid_from_chapter <= current_chapter) and (reveal_ch <= current_chapter)
+        if is_safe:
+            safe_aliases.append(a.alias)
+            aliases_legacy.append({
+                "alias": a.alias,
+                "type": a.alias_type.value if hasattr(a.alias_type, 'value') else str(a.alias_type),
+            })
+        else:
+            blocked_aliases.append(a.alias)
+
+    # 2. Resolve Active Claims vs Future Spoiler Claims (Auto-Inverted into Negatives)
+    all_claims = db.execute(
+        select(ResearchClaim).where(ResearchClaim.entity_id == entity_id)
+    ).scalars().all()
+
+    active_claims: list[dict[str, Any]] = []
+    claims_legacy: list[dict[str, Any]] = []
+    safe_danbooru_tags: list[str] = []
+    flux_descriptions: list[str] = []
+    anti_spoiler_negative_tags: list[str] = []
+
+    for c in all_claims:
+        until_ch = getattr(c, "valid_until_chapter", None)
+        if until_ch is None:
+            until_ch = getattr(c, "valid_to_chapter", None)
+
+        is_started = c.valid_from_chapter <= current_chapter
+        is_not_expired = (until_ch is None) or (until_ch >= current_chapter)
+
+        c_tags = _parse_json_list(getattr(c, "danbooru_tags", None))
+        c_neg = _parse_json_list(getattr(c, "negative_tags", None))
+
+        if is_started and is_not_expired:
+            active_claims.append({
+                "id": c.id,
+                "era_name": getattr(c, "era_name", None) or "Base Era",
+                "claim_type": c.claim_type.value if hasattr(c.claim_type, 'value') else str(c.claim_type),
+                "claim_text": c.claim_text,
+                "valid_from_chapter": c.valid_from_chapter,
+                "valid_until_chapter": until_ch,
+            })
+            claims_legacy.append({
+                "claim_type": c.claim_type.value if hasattr(c.claim_type, 'value') else str(c.claim_type),
+                "claim_text": c.claim_text,
+                "confidence": c.confidence.value if hasattr(c.confidence, 'value') else str(c.confidence),
+                "valid_from": c.valid_from_chapter,
+            })
+            for t in c_tags:
+                if t not in safe_danbooru_tags:
+                    safe_danbooru_tags.append(t)
+            for nt in c_neg:
+                if nt not in anti_spoiler_negative_tags:
+                    anti_spoiler_negative_tags.append(nt)
+
+            flux_p = getattr(c, "flux_prompt", None)
+            if flux_p and flux_p not in flux_descriptions:
+                flux_descriptions.append(flux_p)
+
+        elif not is_started:
+            # Future spoiler claim -> automatically push its visual tags into negative prompts!
+            for future_tag in c_tags:
+                if future_tag not in safe_danbooru_tags and future_tag not in anti_spoiler_negative_tags:
+                    anti_spoiler_negative_tags.append(future_tag)
+
+    anti_spoiler_negative_tags = [t for t in anti_spoiler_negative_tags if t not in safe_danbooru_tags]
+
+    # 3. Resolve Reference Images
+    images_db = db.execute(
+        select(ResearchImage).where(ResearchImage.entity_id == entity_id)
+    ).scalars().all()
+
+    images_legacy = [
         {
             "image_url": img.image_url,
             "local_path": img.local_path,
             "category": img.category.value if hasattr(img.category, 'value') else str(img.category),
             "caption": img.caption,
         }
-        for img in db.execute(images_query).scalars().all()
+        for img in images_db
     ]
 
+    canonical_image = None
+    for preferred_cat in ("official_cover", "official_illustration", "reference_photo", "community_art"):
+        for img in images_db:
+            c_val = img.category.value if hasattr(img.category, 'value') else str(img.category)
+            if c_val == preferred_cat:
+                canonical_image = img.local_path or img.image_url
+                break
+        if canonical_image:
+            break
+    if not canonical_image and images_db:
+        canonical_image = images_db[0].local_path or images_db[0].image_url
+
+    flux_text = " ".join(flux_descriptions) if flux_descriptions else "; ".join(c["claim_text"] for c in active_claims)
+
     return {
+        "status": "ok",
+        "allowed": True,
         "entity_id": entity_id,
         "entity_name": entity.canonical_name,
+        "canonical_name": entity.canonical_name,
         "entity_type": entity.entity_type.value if hasattr(entity.entity_type, 'value') else str(entity.entity_type),
         "current_chapter": current_chapter,
-        "known_aliases": aliases,
-        "visual_claims": claims,
-        "reference_images": images,
+        "safe_aliases": safe_aliases,
+        "blocked_spoiler_aliases": blocked_aliases,
+        "known_aliases": aliases_legacy,
+        "active_claims": active_claims,
+        "visual_claims": claims_legacy,
+        "reference_images": images_legacy,
+        "danbooru_prompt": ", ".join(safe_danbooru_tags),
+        "flux_natural_prompt": flux_text,
+        "anti_spoiler_negative_prompt": ", ".join(anti_spoiler_negative_tags),
+        "canonical_reference_image": canonical_image,
     }
 
 

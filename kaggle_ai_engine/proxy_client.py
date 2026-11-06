@@ -314,25 +314,70 @@ class KaggleModelProxyClient:
         temperature: float = 0.2,
         max_tokens: int = 4096,
     ) -> str:
-        """Direct Groq LPU API call for ultra-fast chat completion."""
+        """Direct Groq LPU API call with multi-model failover."""
         import requests
         api_key = self.settings.groq_api_key
-        target_model = model or getattr(self.settings, "groq_model", "qwen/qwen3.8-27b")
-        allowed_groq = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"]
-        if target_model not in allowed_groq:
-            target_model = getattr(self.settings, "groq_model", "qwen/qwen3.8-27b")
+        primary_model = model or getattr(self.settings, "groq_model", "openai/gpt-oss-120b")
+        groq_candidates = [
+            primary_model,
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "qwen/qwen3.8-27b",
+        ]
+        candidate_models = list(dict.fromkeys(groq_candidates))
 
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        body = {
-            "model": target_model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-        resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=body, timeout=self.timeout)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+
+        last_error = None
+        for cand in candidate_models:
+            body = {
+                "model": cand,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            try:
+                resp = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=body,
+                    timeout=min(10, self.timeout),
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return data["choices"][0]["message"]["content"]
+                last_error = f"{cand} failed with HTTP {resp.status_code}: {resp.text}"
+                logger.warning("Groq model %s error: %s; trying next Groq candidate", cand, resp.status_code)
+            except Exception as e:
+                last_error = str(e)
+                logger.warning("Groq model %s exception: %s; trying next Groq candidate", cand, e)
+
+        raise RuntimeError(f"All Groq models failed. Last error: {last_error}")
+
+    def transcribe_audio(self, audio_file: Path | str, model: str = "whisper-large-v3-turbo") -> str:
+        """Transcribe speech audio via Groq Whisper API (whisper-large-v3-turbo)."""
+        import requests
+        api_key = self.settings.groq_api_key
+        if not api_key:
+            raise RuntimeError("GROQ_API_KEY required for Groq Whisper transcription.")
+
+        audio_path = Path(audio_file)
+        if not audio_path.exists():
+            raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+        headers = {"Authorization": f"Bearer {api_key}"}
+        with open(audio_path, "rb") as f:
+            files = {"file": (audio_path.name, f, "audio/mpeg")}
+            data = {"model": model, "response_format": "text"}
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=60,
+            )
+            resp.raise_for_status()
+            return resp.text.strip()

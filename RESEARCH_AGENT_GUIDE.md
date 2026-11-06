@@ -244,3 +244,4 @@ Here are the most high-impact areas to improve or expand in the Researcher Agent
    - Once official images are downloaded into `data/references/<EntityName>/`, trigger `WF-FOUNDRY-CHAR.json` to generate front, 3/4, side, and back turnaround sheets for new characters.
 4. **Location & Creature Wiki Harvester**:
    - Extend `ResearchAgent` with `research_location(db, project_id, "Forgotten Shore")` and `research_creature(db, project_id, "Mountain Centipede")` using the existing `LocationContinuitySubagent` and `CreatureMonsterSubagent`.
+

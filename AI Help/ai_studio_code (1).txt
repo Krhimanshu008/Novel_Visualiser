@@ -1,0 +1,5 @@
+USE_OFFLINE_EXTRACTOR=0
+GROQ_API_KEY=gsk_your_key_here
+GROQ_REASONING_MODEL=qwen-qwq-32b
+# Or GEMINI_API_KEY=... (gemini-2.5-flash)
+# Or OPENROUTER_API_KEY=... (deepseek/deepseek-r1)

@@ -43,27 +43,40 @@ _SessionFactory: sessionmaker[Session] | None = None
 # Initialisation
 # ---------------------------------------------------------------------------
 
-def init_db(database_path: str | None = None) -> Engine:
+def init_db(database_path: str | None = None, force_reinit: bool = False) -> Engine:
     """Create the SQLAlchemy engine, enable WAL mode, and run ``create_all``.
 
     Args:
         database_path: Explicit path to the SQLite file.  Falls back to
             ``Settings.db.database_path`` when *None*.
+        force_reinit: Force recreation of engine even if already cached.
 
     Returns:
         The newly created (or cached) :class:`~sqlalchemy.engine.Engine`.
     """
     global _engine, _SessionFactory
 
-    if _engine is not None:
+    if _engine is not None and database_path is None and not force_reinit:
         logger.debug("Database engine already initialised — returning cached instance.")
         return _engine
 
+    if _engine is not None and (database_path is not None or force_reinit):
+        try:
+            _engine.dispose()
+        except Exception:
+            pass
+        _engine = None
+        _SessionFactory = None
+
     settings = get_settings()
-    db_path = database_path or settings.db.database_path
+    raw_path = str(database_path or settings.db.database_path)
+    if raw_path.startswith("sqlite:///"):
+        raw_path = raw_path[len("sqlite:///"):]
+    db_path = raw_path
 
     # Ensure the parent directory exists
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    if Path(db_path).parent:
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
     url = f"sqlite:///{db_path}"
     _engine = create_engine(
@@ -88,6 +101,8 @@ def init_db(database_path: str | None = None) -> Engine:
     try:
         with _engine.connect() as conn:
             cursor = conn.connection.cursor()
+
+            # 1. arcs table
             cursor.execute("PRAGMA table_info(arcs);")
             existing_cols = {row[1] for row in cursor.fetchall()}
             new_cols = [
@@ -104,6 +119,48 @@ def init_db(database_path: str | None = None) -> Engine:
                         cursor.execute(f"ALTER TABLE arcs ADD COLUMN {col_name} {col_def};")
                     except Exception as exc:
                         logger.debug("Column %s add note: %s", col_name, exc)
+
+            # 2. projects table
+            cursor.execute("PRAGMA table_info(projects);")
+            existing_cols_proj = {row[1] for row in cursor.fetchall()}
+            new_cols_proj = [
+                ("wiki_url", "VARCHAR(512)"),
+                ("epub_path", "VARCHAR(512)"),
+                ("genre_style", "VARCHAR(128)"),
+            ]
+            for col_name, col_def in new_cols_proj:
+                if col_name not in existing_cols_proj:
+                    try:
+                        cursor.execute(f"ALTER TABLE projects ADD COLUMN {col_name} {col_def};")
+                    except Exception as exc:
+                        logger.debug("Column %s add note: %s", col_name, exc)
+
+            # 3. research_sources table
+            cursor.execute("PRAGMA table_info(research_sources);")
+            existing_cols_sources = {row[1] for row in cursor.fetchall()}
+            if "content_hash" not in existing_cols_sources:
+                try:
+                    cursor.execute("ALTER TABLE research_sources ADD COLUMN content_hash VARCHAR(64);")
+                except Exception as exc:
+                    logger.debug("Column content_hash add note: %s", exc)
+
+            # 4. research_claims table
+            cursor.execute("PRAGMA table_info(research_claims);")
+            existing_cols_claims = {row[1] for row in cursor.fetchall()}
+            new_cols_claims = [
+                ("valid_until_chapter", "INTEGER"),
+                ("era_name", "VARCHAR(128)"),
+                ("danbooru_tags", "TEXT"),
+                ("flux_prompt", "TEXT"),
+                ("negative_tags", "TEXT"),
+            ]
+            for col_name, col_def in new_cols_claims:
+                if col_name not in existing_cols_claims:
+                    try:
+                        cursor.execute(f"ALTER TABLE research_claims ADD COLUMN {col_name} {col_def};")
+                    except Exception as exc:
+                        logger.debug("Column %s add note: %s", col_name, exc)
+
             cursor.close()
             conn.commit()
     except Exception as exc:

@@ -65,6 +65,10 @@ class ComfyUISettings(BaseSettings):
         default=None,
         description="Full URL if using Kaggle/Colab tunnel (e.g. https://xxxx.trycloudflare.com or https://xxxx.ngrok-free.app)",
     )
+    colab_url: Optional[str] = Field(
+        default=None,
+        description="Permanent URL for Google Colab GPU worker (e.g. https://gcgpu.krhimanshu.in)",
+    )
     gpu0_url: Optional[str] = Field(
         default=None,
         description="Permanent URL for GPU 0 worker (e.g. https://gpu0.krhimanshu.in)",
@@ -85,23 +89,27 @@ class ComfyUISettings(BaseSettings):
 
     @property
     def base_url(self) -> str:
-        if self.gpu0_url:
-            return self.gpu0_url.rstrip("/")
         if self.url:
             return self.url.rstrip("/")
+        if self.colab_url:
+            return self.colab_url.rstrip("/")
+        if self.gpu0_url:
+            return self.gpu0_url.rstrip("/")
         scheme = "https" if self.use_ssl else "http"
         return f"{scheme}://{self.host}:{self.port}"
 
     @property
     def cluster_urls(self) -> list[str]:
-        """Return list of active cluster URLs for Dual-GPU dispatching."""
+        """Return list of active cluster URLs for GPU dispatching."""
         urls: list[str] = []
+        if self.colab_url:
+            urls.append(self.colab_url.rstrip("/"))
         if self.gpu0_url:
             urls.append(self.gpu0_url.rstrip("/"))
-        elif self.url:
-            urls.append(self.url.rstrip("/"))
         if self.gpu1_url:
             urls.append(self.gpu1_url.rstrip("/"))
+        if not urls and self.url:
+            urls.append(self.url.rstrip("/"))
         if not urls:
             urls.append(self.base_url)
         return urls
