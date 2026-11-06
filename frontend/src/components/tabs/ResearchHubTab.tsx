@@ -259,3 +259,4 @@ export const ResearchHubTab: React.FC = () => {
     </div>
   );
 };
+

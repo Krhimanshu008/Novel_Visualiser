@@ -47,3 +47,4 @@ export const GpuBadge: React.FC<GpuBadgeProps> = ({ gpu }) => {
     </div>
   );
 };
+

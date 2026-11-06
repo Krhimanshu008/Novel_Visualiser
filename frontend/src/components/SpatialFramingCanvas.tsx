@@ -192,3 +192,4 @@ export const SpatialFramingCanvas: React.FC<SpatialFramingCanvasProps> = ({
     </div>
   );
 };
+

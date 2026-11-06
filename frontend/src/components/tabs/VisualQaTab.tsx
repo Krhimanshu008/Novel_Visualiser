@@ -246,3 +246,4 @@ export const VisualQaTab: React.FC = () => {
     </div>
   );
 };
+

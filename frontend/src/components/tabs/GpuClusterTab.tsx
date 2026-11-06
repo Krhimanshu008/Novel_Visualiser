@@ -142,3 +142,4 @@ export const GpuClusterTab: React.FC<GpuClusterTabProps> = ({ gpus, onRefresh })
     </div>
   );
 };
+
