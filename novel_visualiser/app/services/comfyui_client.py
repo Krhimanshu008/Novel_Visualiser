@@ -575,6 +575,44 @@ class ComfyUIWorkflowCompiler:
             "13": {"class_type": "SaveImage", "inputs": {"images": ["12", 0], "filename_prefix": f"WF07_INPAINT_{shot_id}"}}
         }
 
+    @classmethod
+    def compile_qwen_edit(
+        cls,
+        shot_id: str,
+        input_image_filename: str,
+        edit_instruction: str,
+        negative_prompt: Optional[str] = None,
+        edit_lora: str = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+        lora_strength: float = 0.85,
+        steps: int = 8,
+        cfg: float = 4.0,
+        denoise: float = 0.45,
+        seed: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """WF-QWEN-EDIT: Instruction-Guided Multimodal Image Editing & Relighting using Qwen-Edit LoRA."""
+        run_seed = seed if seed is not None else random.randint(1000000, 2147483647)
+        neg = negative_prompt or cls.DEFAULT_NEG
+
+        return {
+            "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": cls.CKPT_ILLUSTRIOUS}},
+            "2": {"class_type": "VAELoader", "inputs": {"vae_name": cls.VAE_SDXL}},
+            "3": {"class_type": "LoraLoader", "inputs": {"model": ["1", 0], "clip": ["1", 1], "lora_name": edit_lora, "strength_model": lora_strength, "strength_clip": lora_strength}},
+            "4": {"class_type": "LoadImage", "inputs": {"image": input_image_filename}},
+            "5": {"class_type": "CLIPTextEncode", "inputs": {"text": f"masterpiece, best quality, {edit_instruction}", "clip": ["3", 1]}},
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": ["3", 1]}},
+            "7": {"class_type": "VAEEncode", "inputs": {"pixels": ["4", 0], "vae": ["2", 0]}},
+            "8": {
+                "class_type": "KSampler",
+                "inputs": {
+                    "seed": run_seed, "steps": steps, "cfg": cfg,
+                    "sampler_name": "euler", "scheduler": "normal", "denoise": denoise,
+                    "model": ["3", 0], "positive": ["5", 0], "negative": ["6", 0], "latent_image": ["7", 0]
+                }
+            },
+            "9": {"class_type": "VAEDecode", "inputs": {"samples": ["8", 0], "vae": ["2", 0]}},
+            "10": {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": f"WF_QWEN_EDIT_{shot_id}"}}
+        }
+
     # =========================================================================
     # STAGE D: FINAL MASTERING WORKFLOW
     # =========================================================================

@@ -419,3 +419,4 @@ def build_full_chapter1_animation_spec():
 
 if __name__ == "__main__":
     build_full_chapter1_animation_spec()
+
