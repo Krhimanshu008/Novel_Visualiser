@@ -29,9 +29,19 @@ class DatabaseSettings(BaseSettings):
 class LLMSettings(BaseSettings):
     """LLM provider configuration (Gemini API or local Ollama)."""
 
-    # --- Google Gemini (primary) ---
+    # --- Google Gemini (primary & secondary) ---
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
+    google_api_key_secondary: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY_SECONDARY")
     gemini_model: str = Field(default="gemini-2.5-flash")
+
+    # --- OpenRouter (Multi-Model Agentic Gateway) ---
+    openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
+    openrouter_model: str = Field(default="nvidia/nemotron-3.5-lightning:free")
+
+    # --- Kaggle Agentic AI & Model Proxy ---
+    kaggle_api_token: Optional[str] = Field(default=None, alias="KAGGLE_API_TOKEN")
+    kaggle_key: Optional[str] = Field(default=None, alias="KAGGLE_KEY")
+    kaggle_username: Optional[str] = Field(default=None, alias="KAGGLE_USERNAME")
 
     # --- Local Ollama (fallback / free tier) ---
     ollama_base_url: Optional[str] = Field(default="http://localhost:11434")

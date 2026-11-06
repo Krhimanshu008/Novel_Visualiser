@@ -59,9 +59,16 @@ class KaggleAISettings:
         self.kaggle_key: str = os.getenv("KAGGLE_KEY", "")
         self.kaggle_api_token: str = os.getenv("KAGGLE_API_TOKEN", "")
 
-        # Optional fallback to direct Gemini if proxy is unconfigured
+        # Optional fallback to direct Gemini or OpenRouter
         self.google_api_key: str = os.getenv("GOOGLE_API_KEY", "")
+        self.google_api_key_secondary: str = os.getenv("GOOGLE_API_KEY_SECONDARY", "")
         self.gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
+        self.openrouter_model: str = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
+
+        # Automatically use Kaggle API Token as Model Proxy key if available
+        if not self.model_proxy_api_key and self.kaggle_api_token:
+            self.model_proxy_api_key = self.kaggle_api_token
 
         # Quota safeguards
         self.daily_quota_usd: float = float(os.getenv("KAGGLE_DAILY_QUOTA_USD", "10.00"))

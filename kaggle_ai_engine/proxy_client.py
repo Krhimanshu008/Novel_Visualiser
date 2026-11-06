@@ -102,8 +102,15 @@ class KaggleModelProxyClient:
                 logger.warning("Kaggle SDK prompt error: %s; falling back", err)
 
         # Fallback to direct Gemini API if configured
-        if self.settings.google_api_key:
-            return self._gemini_direct_fallback(messages, temperature=temperature, max_tokens=max_tokens)
+        if self.settings.google_api_key or getattr(self.settings, "google_api_key_secondary", None):
+            try:
+                return self._gemini_direct_fallback(messages, temperature=temperature, max_tokens=max_tokens)
+            except Exception as e:
+                logger.warning("Gemini direct fallback failed: %s; trying OpenRouter", e)
+
+        # Fallback to OpenRouter multi-model gateway
+        if getattr(self.settings, "openrouter_api_key", None):
+            return self._openrouter_direct_fallback(messages, model=model, temperature=temperature, max_tokens=max_tokens)
 
         raise RuntimeError("Could not execute chat completion through Kaggle Model Proxy or fallback.")
 
@@ -182,10 +189,12 @@ class KaggleModelProxyClient:
         return self._gemini_multimodal_fallback(prompt, image_paths)
 
     def _gemini_direct_fallback(self, messages: list[dict[str, Any]], temperature: float, max_tokens: int) -> str:
-        """Direct Google Gemini API fallback."""
+        """Direct Google Gemini API fallback with primary & secondary keys."""
         import requests
-        api_key = self.settings.google_api_key
-        candidate_models = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-1.5-flash-8b"]
+        keys = [self.settings.google_api_key]
+        if getattr(self.settings, "google_api_key_secondary", None):
+            keys.append(self.settings.google_api_key_secondary)
+        candidate_models = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-pro-latest"]
 
         contents = []
         for m in messages:
@@ -198,16 +207,19 @@ class KaggleModelProxyClient:
         }
 
         last_error = None
-        for mod in candidate_models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={api_key}"
-            try:
-                resp = requests.post(url, json=body, timeout=min(2, self.timeout))
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return data["candidates"][0]["content"]["parts"][0]["text"]
-                last_error = f"{resp.status_code}: {resp.text}"
-            except Exception as e:
-                last_error = str(e)
+        for key in keys:
+            if not key:
+                continue
+            for mod in candidate_models:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={key}"
+                try:
+                    resp = requests.post(url, json=body, timeout=min(5, self.timeout))
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return data["candidates"][0]["content"]["parts"][0]["text"]
+                    last_error = f"{resp.status_code}: {resp.text}"
+                except Exception as e:
+                    last_error = str(e)
 
         raise RuntimeError(f"Gemini fallback failed across models: {last_error}")
 
@@ -238,3 +250,34 @@ class KaggleModelProxyClient:
         resp.raise_for_status()
         data = resp.json()
         return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
+    def _openrouter_direct_fallback(
+        self,
+        messages: list[dict[str, Any]],
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 4096,
+    ) -> str:
+        """Direct OpenRouter API call for chat completion."""
+        import requests
+        api_key = self.settings.openrouter_api_key
+        target_model = model or getattr(self.settings, "openrouter_model", "nvidia/nemotron-3.5-lightning:free")
+        if target_model.startswith("kbench/") or "/" not in target_model:
+            target_model = getattr(self.settings, "openrouter_model", "nvidia/nemotron-3.5-lightning:free")
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "HTTP-Referer": "https://github.com/Krhimanshu008/Novel_Visualiser",
+            "X-Title": "Novel Visualiser",
+        }
+        body = {
+            "model": target_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body, timeout=self.timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
