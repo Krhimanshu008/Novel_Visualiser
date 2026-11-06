@@ -37,11 +37,17 @@ from kaggle_ai_engine.config import get_kaggle_settings
 logger = logging.getLogger("kaggle_ai_engine.client")
 T = TypeVar("T", bound=BaseModel)
 
-# Try importing official kaggle_benchmarks engine
+# Try importing official kaggle_benchmarks engine (available in Kaggle environment)
+kbench: Any = None
+kbench_images: Any = None
+KBENCH_AVAILABLE = False
+
 try:
-    import kaggle_benchmarks as kbench
-    from kaggle_benchmarks.content_types import images as kbench_images
-    KBENCH_AVAILABLE = True
+    import importlib.util
+    if importlib.util.find_spec("kaggle_benchmarks") is not None:
+        import kaggle_benchmarks as kbench  # type: ignore[import-not-found, import-untyped]
+        from kaggle_benchmarks.content_types import images as kbench_images  # type: ignore[import-not-found, import-untyped]
+        KBENCH_AVAILABLE = True
 except Exception as e:
     logger.debug("kaggle_benchmarks SDK not imported directly: %s", e)
     kbench = None
@@ -231,13 +237,13 @@ class KaggleModelProxyClient:
         raise RuntimeError(f"Gemini fallback failed across models: {last_error}")
 
     def _gemini_multimodal_fallback(self, prompt: str, image_paths: list[Path | str]) -> str:
-        """Direct Gemini multimodal API call."""
+        """Direct Gemini multimodal API call with multi-key failover."""
         import requests
-        api_key = self.settings.google_api_key
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-3.8-flash:generateContent?key={api_key}"
-        )
+        keys = [self.settings.google_api_key]
+        if getattr(self.settings, "google_api_key_secondary", None):
+            keys.append(self.settings.google_api_key_secondary)
+
+        candidate_models = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-pro-latest"]
 
         parts: list[dict[str, Any]] = [{"text": prompt}]
         for p in image_paths:
@@ -253,10 +259,21 @@ class KaggleModelProxyClient:
                 })
 
         body = {"contents": [{"parts": parts}]}
-        resp = requests.post(url, json=body, timeout=self.timeout)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+        last_err = None
+        for key in keys:
+            if not key:
+                continue
+            for mod in candidate_models:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={key}"
+                try:
+                    resp = requests.post(url, json=body, timeout=self.timeout)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return data["candidates"][0]["content"]["parts"][0]["text"]
+                    last_err = f"{resp.status_code}: {resp.text}"
+                except Exception as e:
+                    last_err = str(e)
+        raise RuntimeError(f"Gemini multimodal fallback failed: {last_err}")
 
 
     def _openrouter_direct_fallback(
