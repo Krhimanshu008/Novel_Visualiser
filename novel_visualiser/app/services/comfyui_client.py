@@ -120,12 +120,19 @@ class ComfyUIWorkflowCompiler:
                 "front view, three-quarter view, profile side view, full body, standing straight, "
                 "simple background, solid neutral grey studio background #2b2b2b, flat even studio lighting"
             )
-        else:
+        elif mode == "expressions":
             framing = (
                 "masterpiece, best quality, expression sheet, 4-panel matrix, close-up headshots, "
                 "neutral expression, intense combat expression, shocked wary expression, cunning smirk, "
                 "simple background, solid neutral grey studio background #2b2b2b, flat studio lighting"
             )
+        elif mode == "outfit":
+            framing = (
+                "masterpiece, best quality, character costume design sheet, full body fashion breakdown, "
+                "standing pose, isolated wardrobe, simple background, solid neutral grey studio background #2b2b2b"
+            )
+        else:
+            framing = "masterpiece, best quality, character design plate, simple background, solid neutral grey studio background #2b2b2b"
 
         pos_prompt = f"{framing}, {identity_tags}"
         neg_prompt = f"{cls.DEFAULT_NEG}, complex background, scenery, dramatic lighting, lens flare"

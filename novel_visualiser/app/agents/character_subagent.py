@@ -414,49 +414,72 @@ Respond ONLY in valid JSON matching this exact structure:
         self,
         matrix_spec: CharacterMatrixSpec,
         output_dir: Path,
+        checkpoint: Optional[str] = None,
     ) -> CharacterMatrixSpec:
         """Render all 4 sheets and auto-extract canonical face chips for IP-Adapter."""
         output_dir.mkdir(parents=True, exist_ok=True)
         sheets = [
-            ("sheet_1_turnaround", matrix_spec.sheet_1_turnaround),
-            ("sheet_2_expressions", matrix_spec.sheet_2_expressions),
-            ("sheet_3_outfit", matrix_spec.sheet_3_outfit),
-            ("sheet_4_items", matrix_spec.sheet_4_items),
+            ("sheet_1_turnaround", matrix_spec.sheet_1_turnaround, "turnaround"),
+            ("sheet_2_expressions", matrix_spec.sheet_2_expressions, "expressions"),
+            ("sheet_3_outfit", matrix_spec.sheet_3_outfit, "outfit"),
+            ("sheet_4_items", matrix_spec.sheet_4_items, "items"),
         ]
 
         if self.comfy_dispatcher and self.comfy_dispatcher.clients:
             logger.info("Executing 4-sheet character generation on ComfyUI Dual-GPU cluster...")
             jobs = []
-            for key, sheet in sheets:
+            for key, sheet, mode in sheets:
                 job_id = f"{matrix_spec.character_id}_{sheet.role.value.lower()}"
-                workflow = ComfyUIWorkflowCompiler.compile_shot_env(
-                    shot_id=job_id,
-                    env_prompt=sheet.prompt,
-                    negative_prompt=sheet.negative_prompt,
-                    width=sheet.width,
-                    height=sheet.height,
-                    seed=sheet.seed or random.randint(1000, 9999),
-                )
+                if mode in ["turnaround", "expressions"]:
+                    workflow = ComfyUIWorkflowCompiler.compile_foundry_char(
+                        char_id=job_id,
+                        identity_tags=sheet.prompt,
+                        mode=mode,
+                        seed=sheet.seed or random.randint(1000, 9999),
+                        width=sheet.width,
+                        height=sheet.height,
+                        checkpoint=checkpoint,
+                    )
+                elif mode == "items":
+                    workflow = ComfyUIWorkflowCompiler.compile_foundry_prop(
+                        prop_id=job_id,
+                        item_tags=sheet.prompt,
+                        negative_prompt=sheet.negative_prompt,
+                        seed=sheet.seed or random.randint(1000, 9999),
+                        width=sheet.width,
+                        height=sheet.height,
+                        checkpoint=checkpoint,
+                    )
+                else:  # outfit
+                    workflow = ComfyUIWorkflowCompiler.compile_foundry_char(
+                        char_id=job_id,
+                        identity_tags=sheet.prompt,
+                        mode="outfit",
+                        seed=sheet.seed or random.randint(1000, 9999),
+                        width=sheet.width,
+                        height=sheet.height,
+                        checkpoint=checkpoint,
+                    )
                 jobs.append((job_id, workflow))
 
             results = self.comfy_dispatcher.dispatch_batch_parallel(jobs, output_dir=output_dir)
 
-            for (key, sheet), (job_id, img_path) in zip(sheets, results):
+            for (key, sheet, _), (job_id, img_path) in zip(sheets, results):
                 if img_path and img_path.exists():
                     sheet.image_path = str(img_path)
                 else:
                     self._create_mock_sheet(sheet, output_dir, matrix_spec.character_id)
         else:
             logger.info("ComfyUI cluster not connected; generating local test character sheets")
-            for key, sheet in sheets:
+            for key, sheet, _ in sheets:
                 self._create_mock_sheet(sheet, output_dir, matrix_spec.character_id)
 
         # Extract Canonical Face Reference for IP-Adapter Plus from Sheet 1 or Sheet 2
         face_chip_path = output_dir / f"{matrix_spec.character_id}_canonical_face_chip.png"
-        if not face_chip_path.exists() and matrix_spec.sheet_2_expressions.image_path:
-            img = cv2.imread(matrix_spec.sheet_2_expressions.image_path)
+        ref_source = matrix_spec.sheet_2_expressions.image_path or matrix_spec.sheet_1_turnaround.image_path
+        if not face_chip_path.exists() and ref_source:
+            img = cv2.imread(ref_source)
             if img is not None:
-                # Crop top-left quadrant (neutral face crop)
                 h, w, _ = img.shape
                 face_crop = img[0:int(h * 0.5), 0:int(w * 0.5)]
                 cv2.imwrite(str(face_chip_path), face_crop)
