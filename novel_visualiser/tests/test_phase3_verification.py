@@ -176,6 +176,7 @@ def test_04_visual_reference_lock_and_resolver(proj_id):
         print(" [PASS] Resolver seamlessly pulled locked reference image and canonical seed into scene prompt payload!")
 
     client.close()
+    return sunny_id
 
 
 def test_05_fastapi_comfyui_endpoints(proj_id, sunny_id):

@@ -488,3 +488,7 @@ class QCContinuityAgent:
             logger.warning("Failed to save QC audit report to %s: %s", report_path, e)
 
         return audit
+
+
+# Backwards compatibility alias
+VisualContinuityQCAgent = QCContinuityAgent

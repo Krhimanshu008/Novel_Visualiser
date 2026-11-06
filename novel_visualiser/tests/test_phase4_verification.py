@@ -12,6 +12,7 @@ Verifies:
 
 import os
 import sys
+os.environ['ALLOW_MOCK_FALLBACK'] = '1'
 from pathlib import Path
 import cv2
 import numpy as np
