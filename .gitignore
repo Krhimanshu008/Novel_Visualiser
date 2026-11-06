@@ -47,6 +47,11 @@ models/
 *.ckpt
 *.bin
 
+# Node / Frontend
+frontend/node_modules/
+!frontend/dist/
+!frontend/dist/**
+
 # Testing & Logs
 .pytest_cache/
 .coverage

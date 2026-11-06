@@ -955,3 +955,105 @@ def get_chapter_film_status(chapter_id: str, db: Session = Depends(get_db)):
         "film_path": str(master_mp4) if exists else None,
         "filesize_mb": round(master_mp4.stat().st_size / (1024 * 1024), 2) if exists else 0.0,
     }
+
+
+# ---------------------------------------------------------------------------
+# 3-GPU Cluster Telemetry & Static Web Studio Mounts
+# ---------------------------------------------------------------------------
+
+@app.get("/cluster/status", tags=["3-GPU Cluster"])
+def get_cluster_status():
+    """Probe all 3 GPUs (Colab, GPU0, GPU1) and return live hardware telemetry."""
+    import time
+    import urllib.request
+    import json
+    from app.config import get_settings
+    settings = get_settings()
+
+    targets = [
+        {
+            "id": "colab",
+            "name": "Google Colab Worker (gcgpu)",
+            "url": settings.comfyui.colab_url or "https://gcgpu.krhimanshu.in",
+            "role": "Environment & Wide Plates (WF-FOUNDRY-LOC)"
+        },
+        {
+            "id": "gpu0",
+            "name": "Kaggle Dual-GPU 0 (gpu0)",
+            "url": settings.comfyui.gpu0_url or "https://gpu0.krhimanshu.in",
+            "role": "Character Sheets & LoRA Turnaround (WF-FOUNDRY-CHAR)"
+        },
+        {
+            "id": "gpu1",
+            "name": "Kaggle Dual-GPU 1 (gpu1)",
+            "url": settings.comfyui.gpu1_url or "https://gpu1.krhimanshu.in",
+            "role": "Creatures, Regional Inpaint & YOLOv8 FaceDetailer"
+        }
+    ]
+
+    results = []
+    for t in targets:
+        url = t["url"].rstrip("/")
+        stats_url = f"{url}/system_stats"
+        start_t = time.time()
+        try:
+            req = urllib.request.Request(stats_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                latency = int((time.time() - start_t) * 1000)
+                devices = data.get("devices", [])
+                vram_total = 14.56
+                vram_free = 14.46
+                if devices:
+                    dev = devices[0]
+                    vram_total = dev.get("vram_total", 14.56 * (1024**3)) / (1024**3)
+                    vram_free = dev.get("vram_free", 14.46 * (1024**3)) / (1024**3)
+                vram_used = max(0.0, vram_total - vram_free)
+                vram_pct = (vram_used / vram_total * 100.0) if vram_total > 0 else 0.0
+
+                results.append({
+                    "id": t["id"],
+                    "name": t["name"],
+                    "url": t["url"],
+                    "online": True,
+                    "role": t["role"],
+                    "vramTotalGb": round(vram_total, 2),
+                    "vramFreeGb": round(vram_free, 2),
+                    "vramUsedGb": round(vram_used, 2),
+                    "vramPercent": round(vram_pct, 1),
+                    "queueRemaining": 0,
+                    "latencyMs": latency
+                })
+        except Exception as e:
+            results.append({
+                "id": t["id"],
+                "name": t["name"],
+                "url": t["url"],
+                "online": False,
+                "role": t["role"],
+                "vramTotalGb": 14.56,
+                "vramFreeGb": 0.0,
+                "vramUsedGb": 14.56,
+                "vramPercent": 100.0,
+                "queueRemaining": 0,
+                "latencyMs": 999,
+                "error": str(e)
+            })
+
+    return results
+
+
+# Mount media and production frontend
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
+# Media outputs
+output_path = Path("output").resolve()
+output_path.mkdir(parents=True, exist_ok=True)
+app.mount("/output", StaticFiles(directory=str(output_path)), name="output")
+
+# Web studio frontend
+frontend_dist = Path("frontend/dist").resolve()
+if frontend_dist.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+
